@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ताजा समाचार | Hindi News App</title>
+    <style>
+        :root {
+            --primary: #d63031;
+            --bg: #f5f6fa;
+            --card-bg: #ffffff;
+            --text: #2d3436;
+            --secondary-text: #636e72;
+        }
+
+        [data-theme="dark"] {
+            --bg: #121212;
+            --card-bg: #1e1e1e;
+            --text: #f5f6fa;
+            --secondary-text: #b2bec3;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+
+        body { background: var(--bg); color: var(--text); transition: 0.3s; }
+
+        header {
+            background: var(--card-bg);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
+
+        .theme-btn {
+            background: none; border: 1px solid var(--primary);
+            padding: 5px 10px; border-radius: 20px; cursor: pointer; color: var(--text);
+        }
+
+        /* Category Bar */
+        .categories {
+            display: flex; overflow-x: auto; background: var(--card-bg);
+            padding: 10px; gap: 10px; border-bottom: 1px solid rgba(0,0,0,0.1);
+            scrollbar-width: none;
+        }
+        .categories::-webkit-scrollbar { display: none; }
+        
+        .cat-btn {
+            padding: 8px 18px; border-radius: 20px; border: none;
+            background: #dfe6e9; color: #2d3436; cursor: pointer;
+            white-space: nowrap; font-weight: 500; transition: 0.3s;
+        }
+        .cat-btn.active { background: var(--primary); color: white; }
+
+        /* News Grid */
+        .container {
+            max-width: 1200px; margin: 20px auto; padding: 0 15px;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;
+        }
+
+        .news-card {
+            background: var(--card-bg); border-radius: 15px; overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: 0.3s;
+            display: flex; flex-direction: column;
+        }
+        .news-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+
+        .news-img { width: 100%; height: 200px; object-fit: cover; background: #ddd; }
+
+        .content { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; }
+        .news-title { font-size: 1.1rem; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .news-desc { font-size: 0.9rem; color: var(--secondary-text); margin-bottom: 15px; }
+
+        .read-more {
+            margin-top: auto; background: var(--primary); color: white;
+            text-decoration: none; text-align: center; padding: 10px; border-radius: 8px; font-weight: bold;
+        }
+
+        /* Loader & Messages */
+        #loader { text-align: center; padding: 50px; display: none; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #error-msg { text-align: center; padding: 20px; color: var(--primary); display: none; }
+
+        #scroll-top {
+            position: fixed; bottom: 20px; right: 20px; background: var(--primary);
+            color: white; border: none; width: 40px; height: 40px; border-radius: 50%;
+            cursor: pointer; display: none;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">📰 हिंदी न्यूज़</div>
+    <button class="theme-btn" onclick="toggleTheme()">🌓 Theme</button>
+</header>
+
+<nav class="categories">
+    <button class="cat-btn active" onclick="changeCategory('general', this)">मुख्य खबरें</button>
+    <button class="cat-btn" onclick="changeCategory('business', this)">बिजनेस</button>
+    <button class="cat-btn" onclick="changeCategory('entertainment', this)">मनोरंजन</button>
+    <button class="cat-btn" onclick="changeCategory('health', this)">स्वास्थ्य</button>
+    <button class="cat-btn" onclick="changeCategory('science', this)">विज्ञान</button>
+    <button class="cat-btn" onclick="changeCategory('sports', this)">खेल</button>
+    <button class="cat-btn" onclick="changeCategory('technology', this)">टेक</button>
+</nav>
+
+<div id="loader"><div class="spinner"></div><p>खबरें आ रही हैं...</p></div>
+<div id="error-msg"></div>
+
+<main class="container" id="news-container"></main>
+
+<button id="scroll-top" onclick="window.scrollTo({top:0, behavior:'smooth'})">↑</button>
+
+<script>
+    // आपकी दी हुई नई API Key
+    const API_KEY = "e83a4898b41d42df91d9658dc3a60742";
+    const container = document.getElementById('news-container');
+    const loader = document.getElementById('loader');
+    const errorMsg = document.getElementById('error-msg');
+
+    async function fetchNews(category = 'general') {
+        loader.style.display = 'block';
+        errorMsg.style.display = 'none';
+        container.innerHTML = '';
+
+        // NewsAPI का URL (देश: भारत, भाषा: हिंदी)
+        // नोट: NewsAPI का फ्री वर्जन सिर्फ 'everything' endpoint पर अच्छी हिंदी खबरें देता है
+        const url = `https://newsapi.org/v2/top-headlines?country=in&category=${category}&apiKey=${API_KEY}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.status === "ok") {
+                if (data.articles.length === 0) {
+                    errorMsg.innerText = "कोई खबर नहीं मिली।";
+                    errorMsg.style.display = 'block';
+                } else {
+                    displayNews(data.articles);
+                }
+            } else {
+                // अगर API ब्लॉक हो (CORS), तो वैकल्पिक मैसेज दें
+                throw new Error(data.message || "API Error");
+            }
+        } catch (err) {
+            errorMsg.innerHTML = `⚠️ एरर: ${err.message} <br> <small>सुझाव: अगर आप इसे मोबाइल पर फाइल की तरह खोल रहे हैं, तो NewsAPI इसे ब्लॉक कर सकता है। इसे ऑनलाइन होस्ट करें।</small>`;
+            errorMsg.style.display = 'block';
+        } finally {
+            loader.style.display = 'none';
+        }
+    }
+
+    function displayNews(articles) {
+        articles.forEach(article => {
+            if (!article.title || article.title === "[Removed]") return;
+
+            const card = document.createElement('div');
+            card.className = 'news-card';
+            card.innerHTML = `
+                <img src="${article.urlToImage || 'https://via.placeholder.com/400x200?text=News+Image'}" class="news-img" alt="image" loading="lazy">
+                <div class="content">
+                    <h3 class="news-title">${article.title}</h3>
+                    <p class="news-desc">${article.description ? article.description.slice(0, 100) + '...' : 'खबर के बारे में विस्तार से पढ़ने के लिए नीचे बटन पर क्लिक करें।'}</p>
+                    <a href="${article.url}" target="_blank" class="read-more">पूरी खबर पढ़ें</a>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function changeCategory(cat, btn) {
+        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        fetchNews(cat);
+    }
+
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+    }
+
+    // Scroll button visibility
+    window.onscroll = () => {
+        document.getElementById('scroll-top').style.display = 
+            window.scrollY > 300 ? 'block' : 'none';
+    };
+
+    // Initial Load
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    fetchNews();
+
+</script>
+
+</body>
+</html>
